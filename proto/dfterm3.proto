@@ -1,0 +1,49 @@
+package dfterm3;
+
+option optimize_for = LITE_RUNTIME;
+
+// The protobuf file for Dfterm3 plugin (and by extension, a specification of
+// the Dfhack<->Dfterm3 protocol).
+
+// No fields are 'required'. This is meant to increase flexibility in future
+// versions of the protocol. The handling of missing/added fields will be in
+// the application code, not in this protobuf specification.
+
+////////////////////////////////////
+//// Messages from Dfhack to Dfterm3
+////////////////////////////////////
+
+// This one is sent to "introduce" the Dwarf Fortress process to Dfterm3.
+message Introduction {
+    optional string df_version = 1;  // Dwarf Fortress version.
+    optional string path = 2;        // Where is the Dwarf Fortress executable.
+    optional string executable = 3;  // Dwarf Fortress executable.
+    optional int64 pid = 4;          // The process ID of the Dwarf Fortress
+                                     // executable.
+}
+
+// Sends a chunk of screen data from the Dwarf Fortress screen.
+//
+// All the screen is sent. The link is usually local between the Dwarf Fortress
+// process and Dfterm3 so there is not all that much to gain by optimizing and
+// sending less.
+//
+message ScreenData {
+    optional int32 width = 5;       // Width of the grid at the moment
+    optional int32 height = 6;      // Height of the grid at the moment
+    optional bytes screenCP437 = 7; // All of the characters on the screen in
+                                    // CP437 character encoding.
+    optional bytes colors = 8;  // Foreground and background colors packed.
+                                // Same length as in `screenCP437`. This is
+                                // encoded such that high 4 bits are the
+                                // foreground color and lower 4 bits are the
+                                // background color, allowing 16 colors for
+                                // both.
+}
+
+////////////////////////////////////
+//// Messages from Dfterm3 to Dfhack
+////////////////////////////////////
+
+// Well, none that use the protobuf protocol...
+
