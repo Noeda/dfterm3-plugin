@@ -22,25 +22,6 @@ message Introduction {
                                      // executable.
 }
 
-// Sends a chunk of screen data from the Dwarf Fortress screen.
-//
-// All the screen is sent. The link is usually local between the Dwarf Fortress
-// process and Dfterm3 so there is not all that much to gain by optimizing and
-// sending less.
-//
-message ScreenData {
-    optional int32 width = 5;       // Width of the grid at the moment
-    optional int32 height = 6;      // Height of the grid at the moment
-    optional bytes screenCP437 = 7; // All of the characters on the screen in
-                                    // CP437 character encoding.
-    optional bytes colors = 8;  // Foreground and background colors packed.
-                                // Same length as in `screenCP437`. This is
-                                // encoded such that high 4 bits are the
-                                // foreground color and lower 4 bits are the
-                                // background color, allowing 16 colors for
-                                // both.
-}
-
 ////////////////////////////////////
 //// Messages from Dfterm3 to Dfhack
 ////////////////////////////////////

@@ -106,6 +106,8 @@ struct Dfterm3Client
     }
 };
 
+enum MaybeUseProtobuf { UseProtobuf, DontUseProtobuf };
+
 // From dfterm3_strerror.cpp. Turns an `errno` error code to a string.
 string errnoToString( int error_number );
 
@@ -130,12 +132,13 @@ static bool expectAcknowledgement( Dfterm3Client* client, color_ostream &out );
 static bool flushClient( Dfterm3Client* client );
 static bool sendPrefixedData( Dfterm3Client* client
                             , const uint8_t* data
-                            , const uint32_t data_size );
+                            , const uint32_t data_size
+                            , MaybeUseProtobuf = UseProtobuf );
 static bool sendData( Dfterm3Client* client
                     , const uint8_t* data
                     , const uint32_t data_size );
 static bool sendScreenData( color_ostream &out, Dfterm3Client* client );
-static void handleInput( Dfterm3Client* client );
+static void handleInput( Dfterm3Client* client, color_ostream &out );
 
 // Magic cookies
 static bool makeMagicCookieFile( color_ostream &out );
@@ -326,7 +329,7 @@ static bool makeMagicCookieFile( color_ostream &out )
         goto cleanup;
     }
 #else
-	FILE* f = fopen( magic_cookie_file.c_str(), "wb" );
+    FILE* f = fopen( magic_cookie_file.c_str(), "wb" );
     if ( !f ) {
         out << "I could not create the magic cookie file " <<
                magic_cookie_file << ": " << errnoToString( errno ) << endl;
@@ -335,8 +338,8 @@ static bool makeMagicCookieFile( color_ostream &out )
 
     wrote_bytes = fwrite( magic_cookie_contents.c_str()
                         , 1
-						, magic_cookie_contents.size()
-						, f );
+                        , magic_cookie_contents.size()
+                        , f );
 
     if ( wrote_bytes != magic_cookie_contents.size() ) {
         out << "I could not write to the magic cookie file " <<
@@ -351,7 +354,7 @@ cleanup:
 #ifndef _WIN32
     if ( fd != -1 ) close( fd );
 #else
-	if ( f ) fclose( f );
+    if ( f ) fclose( f );
 #endif
     return result;
 }
@@ -381,6 +384,7 @@ static void checkForNewConnections()
     client->client_socket = listener_socket.Accept();
 
     if ( client->client_socket ) {
+        client->client_socket->DisableNagleAlgoritm();
         clients.insert( client );
     } else {
         delete client;
@@ -406,14 +410,25 @@ static bool expectAcknowledgement( Dfterm3Client* client, color_ostream &out )
 
 static bool sendPrefixedData( Dfterm3Client* client
                             , const uint8_t* data
-                            , const uint32_t data_size )
+                            , const uint32_t data_size
+                            , MaybeUseProtobuf proto )
 {
-    uint32_t send_len = data_size;
-    send_len = htonl( send_len );
-    if ( !sendData( client, (const uint8_t*) &send_len, sizeof(uint32_t) ) ) {
+    uint32_t send_len = htonl(data_size);
+    uint8_t use_proto = (proto == UseProtobuf);
+
+    struct iovec vecs[3];
+    vecs[0].iov_base = &send_len;
+    vecs[0].iov_len = sizeof(uint32_t);
+    vecs[1].iov_base = &use_proto;
+    vecs[1].iov_len = 1;
+    vecs[2].iov_base = const_cast<void*>((const void*) data);
+    vecs[2].iov_len = data_size;
+
+    int result = client->client_socket->Send( vecs, 3 );
+    if ( result != data_size+sizeof(uint32_t)+1 ) {
         return false;
     }
-    return sendData( client, data, data_size );
+    return true;
 }
 
 static bool sendData( Dfterm3Client* client
@@ -440,11 +455,11 @@ static bool sendHandshaking( color_ostream &out, Dfterm3Client* client )
     WCHAR procname[ 1025 ];
     DWORD len = 1024;
     char utf8procname[ 1025 ];
-	
+
     memset( procname, 0, sizeof(WCHAR) * 1025 );
     QueryFullProcessImageNameW( GetCurrentProcess(), 0, procname, &len );
     procname[1024] = 0;
-    
+
     WideCharToMultiByte( CP_UTF8, 0, procname, -1, utf8procname, 1024, NULL, NULL );
     utf8procname[ 1025 ] = 0;
 
@@ -529,7 +544,7 @@ static bool initializeMagicCookieContents( color_ostream &out )
 
     size_t read_bytes = fread( random_bytes, 64, 1, f );
     fclose( f );
-    
+
     if ( read_bytes != 1 ) {
         out << "I could not read random numbers from the random number device."
             << endl;
@@ -601,7 +616,7 @@ static bool handleClientSocket( color_ostream &out, Dfterm3Client* client )
     if ( !flushClient( client ) ) {
         return false;
     }
-    handleInput( client );
+    handleInput( client, out );
 
     return sendScreenData( out, client );
 }
@@ -704,7 +719,7 @@ static SDL::Key mapInputCodeToSDL( const uint32_t code )
     return SDL::K_UNKNOWN;
 }
 
-static void handleInput( Dfterm3Client* client )
+static void handleInput( Dfterm3Client* client, color_ostream &out )
 {
     while ( client->tryConsumeMessage() ) {
         // Key input?
@@ -712,6 +727,11 @@ static void handleInput( Dfterm3Client* client )
             if ( client->consuming_message.size() < 12 ) {
                 continue;
             }
+            // The next update shall happen immediately when
+            // possible. This should give the feeling that the
+            // interface is slightly more responsive.
+            last_time_updated = 0;
+
             uint32_t code;
             uint32_t code_point;
 
@@ -789,11 +809,12 @@ static bool sendScreenData( color_ostream &out, Dfterm3Client* client )
     if ( w < 0 || h < 0 ) return false;
     if ( w == 0 || h == 0) return true;
 
-    uint8_t* bufs = (uint8_t*) calloc( w*h*2, 1 );
-    if ( !bufs ) {
+    uint8_t* sendings = (uint8_t*) calloc( w*h*2 + sizeof(int)*2, 1 );
+    if ( !sendings ) {
         fprintf( stderr, "calloc() failed. Bad things could happen now.\n");
         return false;
     }
+    uint8_t* bufs = &sendings[sizeof(int)*2];
 
     uint8_t* cp437 = bufs;
     uint8_t* colors = &bufs[w*h];
@@ -809,20 +830,13 @@ static bool sendScreenData( color_ostream &out, Dfterm3Client* client )
         }
     }
 
-    string sendings;
+    ((int*) sendings)[0] = htonl( w );
+    ((int*) sendings)[1] = htonl( h );
 
-    ScreenData sd;
-    sd.set_width( w );
-    sd.set_height( h );
-    sd.set_screencp437( cp437, w*h );
-    sd.set_colors( colors, w*h );
-
-    sd.SerializeToString( &sendings );
-
-    free(bufs);
-
-    return sendPrefixedData( client
-                           , (const uint8_t*) sendings.data()
-                           , sendings.size() );
+    bool result = sendPrefixedData( client
+                                  , sendings
+                                  , w*h*2 + sizeof(int) * 2
+                                  , DontUseProtobuf );
+    free(sendings);
+    return result;
 }
-
