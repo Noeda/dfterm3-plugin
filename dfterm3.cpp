@@ -140,9 +140,11 @@ static bool sendData( Dfterm3Client* client
 static bool sendScreenData( color_ostream &out, Dfterm3Client* client );
 static void handleInput( Dfterm3Client* client, color_ostream &out );
 
-// Magic cookies
+// Magic cookies and port files
 static bool makeMagicCookieFile( color_ostream &out );
+static bool makePortFile( uint16_t port, color_ostream &out );
 static void unlinkMagicCookieFile();
+static void unlinkPortFile();
 static bool initializeMagicCookieContents( color_ostream &out );
 
 // Global variables (inside this plugin)
@@ -260,6 +262,14 @@ static command_result startDfterm3 ( color_ostream &out
                                    , try_port ) ) {
             listener_socket.SetNonblocking();
 
+            if ( !makePortFile( (uint16_t) try_port, out ) ) {
+                out << "Failed to create a port file in "
+                       "Dwarf Fortress directory. "
+                       "Service not started." << endl;
+                listener_socket.Close();
+                return CR_FAILURE;
+            }
+
             if ( makeMagicCookieFile( out ) ) {
                 out << "Dfterm3 service started on port " <<
                        try_port << "." << endl;
@@ -298,7 +308,28 @@ static void haltDfterm3()
     listener_socket.Close();
     cleanlyClearClients();
     unlinkMagicCookieFile();
+    unlinkPortFile();
     dfterm3_running = false;
+}
+
+static bool makePortFile( uint16_t port, color_ostream &out )
+{
+    FILE* f = fopen( ".dfterm3-port", "wt" );
+    if ( !f ) {
+        return false;
+    }
+    fprintf( f, "%u\n", (unsigned int) port );
+    fclose( f );
+    return true;
+}
+
+static void unlinkPortFile()
+{
+#ifdef _WIN32
+    DeleteFile( ".dfterm3-port" );
+#else
+    unlink( ".dfterm3-port" );
+#endif
 }
 
 static bool makeMagicCookieFile( color_ostream &out )
@@ -362,7 +393,7 @@ cleanup:
 
 static void unlinkMagicCookieFile()
 {
-#ifdef __WIN32
+#ifdef _WIN32
     DeleteFile( magic_cookie_file.c_str() );
 #else
     unlink( magic_cookie_file.c_str() );
