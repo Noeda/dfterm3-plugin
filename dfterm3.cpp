@@ -49,8 +49,6 @@ using namespace df::enums;
 using df::global::gps;
 using df::global::enabler;
 
-static void clientThreadFunction( void* dfterm3_client_void );
-
 struct Dfterm3Client
 {
     CActiveSocket* client_socket;
@@ -61,6 +59,8 @@ struct Dfterm3Client
     bool incoming_message_len_received;
     string incoming_message;
     string consuming_message;
+
+    string send_buffer;
 
     void tryReceiveIncomingMessageLen()
     {
@@ -90,11 +90,11 @@ struct Dfterm3Client
         return false;
     }
 
-    Dfterm3Client() : handshake_complete(false)
+    Dfterm3Client() : client_socket(NULL)
+                    , handshake_complete(false)
                     , acknowledgement_complete(false)
-                    , incoming_message_len_received(false)
                     , incoming_message_len(0)
-                    , client_socket(NULL)
+                    , incoming_message_len_received(false)
     {
     }
 
@@ -289,6 +289,7 @@ static command_result stopDfterm3 ( color_ostream &out
     haltDfterm3();
 
     out << "Stopped Dfterm3 service." << endl;
+    return CR_OK;
 }
 
 // common code to make sure the service stops.
@@ -323,7 +324,7 @@ static bool makeMagicCookieFile( color_ostream &out )
                        , magic_cookie_contents.c_str()
                        , magic_cookie_contents.size() );
 
-    if ( wrote_bytes != magic_cookie_contents.size() ) {
+    if ( (size_t) wrote_bytes != magic_cookie_contents.size() ) {
         out << "I could not write to the magic cookie file " <<
                magic_cookie_file << endl;
         goto cleanup;
@@ -425,7 +426,7 @@ static bool sendPrefixedData( Dfterm3Client* client
     vecs[2].iov_len = data_size;
 
     int result = client->client_socket->Send( vecs, 3 );
-    if ( result != data_size+sizeof(uint32_t)+1 ) {
+    if ( (size_t) result != data_size+sizeof(uint32_t)+1 ) {
         return false;
     }
     return true;
@@ -435,13 +436,26 @@ static bool sendData( Dfterm3Client* client
                     , const uint8_t* data
                     , const uint32_t data_size )
 {
-    // TODO: smartly handle it if not all data could be sent.
-    //       At the moment this is unlikely to block anything because
-    //       Dfterm3 is on localhost.
-    int result = client->client_socket->Send( data, data_size );
-    if ( result != data_size ) {
+    client->send_buffer += string( (char*) data, data_size );
+    if ( client->send_buffer.size() == 0 ) {
+        return true;
+    }
+    int result = client->client_socket->Send( (const uint8_t*)
+                                              client->send_buffer.data()
+                                            , client->send_buffer.size() );
+    if ( result == -1 ) {
+        int err = client->client_socket->GetSocketError();
+        if ( err == CSimpleSocket::SocketInterrupted ) {
+            return sendData( client, NULL, 0 );
+        } else if ( err == CSimpleSocket::SocketEwouldblock ) {
+            return true;
+        }
         return false;
     }
+    if ( result == 0 ) {
+        return false;
+    }
+    client->send_buffer = client->send_buffer.substr( result );
     return true;
 }
 
