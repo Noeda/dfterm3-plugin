@@ -764,12 +764,14 @@ static SDL::Key mapInputCodeToSDL( const uint32_t code )
     return SDL::K_UNKNOWN;
 }
 
+enum KeyDirection { Up = 0, Down = 1, UpAndDown = 2 };
+
 static void handleInput( Dfterm3Client* client, color_ostream &out )
 {
     while ( client->tryConsumeMessage() ) {
         // Key input?
         if ( client->consuming_message[0] == 1 ) {
-            if ( client->consuming_message.size() < 12 ) {
+            if ( client->consuming_message.size() < 13 ) {
                 continue;
             }
             // The next update shall happen immediately when
@@ -789,9 +791,11 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
                   , &client->consuming_message.data()[5]
                   , sizeof(uint32_t) );
 
-            bool shift_down = (bool) client->consuming_message[9];
-            bool alt_down = (bool) client->consuming_message[10];
-            bool ctrl_down = (bool) client->consuming_message[11];
+            KeyDirection key_direction = (KeyDirection)
+                client->consuming_message[9];
+            bool shift_down = (bool) client->consuming_message[10];
+            bool alt_down = (bool) client->consuming_message[11];
+            bool ctrl_down = (bool) client->consuming_message[12];
 
             SDL::Event event;
 
@@ -805,39 +809,47 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
 
             SDL::Key key = mapInputCodeToSDL( ntohl( code ) );
             if ( key != SDL::K_UNKNOWN ) {
-                memset( &event, 0, sizeof(event) );
 
-                event.type = SDL::ET_KEYDOWN;
-                event.key.state = SDL::BTN_PRESSED;
-                event.key.which = 0;
-                event.key.ksym.mod = actual_mods;
-                event.key.ksym.sym = key;
-                SDL_PushEvent( &event );
+                if ( key_direction == Down || key_direction == UpAndDown ) {
+                    memset( &event, 0, sizeof(event) );
+                    event.type = SDL::ET_KEYDOWN;
+                    event.key.state = SDL::BTN_PRESSED;
+                    event.key.which = 0;
+                    event.key.ksym.mod = actual_mods;
+                    event.key.ksym.sym = key;
+                    SDL_PushEvent( &event );
+                }
 
-                memset( &event, 0, sizeof(event) );
-                event.type = SDL::ET_KEYUP;
-                event.key.state = SDL::BTN_RELEASED;
-                event.key.which = 0;
-                event.key.ksym.mod = actual_mods;
-                event.key.ksym.sym = key;
-                SDL_PushEvent( &event );
+                if ( key_direction == Up || key_direction == UpAndDown ) {
+                    memset( &event, 0, sizeof(event) );
+                    event.type = SDL::ET_KEYUP;
+                    event.key.state = SDL::BTN_RELEASED;
+                    event.key.which = 0;
+                    event.key.ksym.mod = actual_mods;
+                    event.key.ksym.sym = key;
+                    SDL_PushEvent( &event );
+                }
             } else if ( code_point ) {
-                memset( &event, 0, sizeof(event) );
 
-                event.type = SDL::ET_KEYDOWN;
-                event.key.state = SDL::BTN_PRESSED;
-                event.key.which = 0;
-                event.key.ksym.mod = actual_mods;
-                event.key.ksym.unicode = (uint16_t) code_point;
-                SDL_PushEvent( &event );
+                if ( key_direction == Down || key_direction == UpAndDown ) {
+                    memset( &event, 0, sizeof(event) );
+                    event.type = SDL::ET_KEYDOWN;
+                    event.key.state = SDL::BTN_PRESSED;
+                    event.key.which = 0;
+                    event.key.ksym.mod = actual_mods;
+                    event.key.ksym.unicode = (uint16_t) code_point;
+                    SDL_PushEvent( &event );
+                }
 
-                memset( &event, 0, sizeof(event) );
-                event.type = SDL::ET_KEYUP;
-                event.key.state = SDL::BTN_RELEASED;
-                event.key.which = 0;
-                event.key.ksym.mod = actual_mods;
-                event.key.ksym.unicode = (uint16_t) code_point;
-                SDL_PushEvent( &event );
+                if ( key_direction == Up || key_direction == UpAndDown ) {
+                    memset( &event, 0, sizeof(event) );
+                    event.type = SDL::ET_KEYUP;
+                    event.key.state = SDL::BTN_RELEASED;
+                    event.key.which = 0;
+                    event.key.ksym.mod = actual_mods;
+                    event.key.ksym.unicode = (uint16_t) code_point;
+                    SDL_PushEvent( &event );
+                }
             }
         }
     }
