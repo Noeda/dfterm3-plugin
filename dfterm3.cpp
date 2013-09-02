@@ -445,22 +445,22 @@ static bool sendPrefixedData( Dfterm3Client* client
                             , const uint32_t data_size
                             , MaybeUseProtobuf proto )
 {
+    char* buf = (char*) malloc( data_size + sizeof(uint32_t) + 1 );
+    if ( !buf ) {
+        return false;
+    }
+
     uint32_t send_len = htonl(data_size);
     uint8_t use_proto = (proto == UseProtobuf);
 
-    struct iovec vecs[3];
-    vecs[0].iov_base = &send_len;
-    vecs[0].iov_len = sizeof(uint32_t);
-    vecs[1].iov_base = &use_proto;
-    vecs[1].iov_len = 1;
-    vecs[2].iov_base = const_cast<void*>((const void*) data);
-    vecs[2].iov_len = data_size;
+    *((uint32_t*) buf) = send_len;
+    buf[sizeof(uint32_t)] = use_proto;
+    memcpy( &buf[sizeof(uint32_t)+1], data, data_size );
 
-    int result = client->client_socket->Send( vecs, 3 );
-    if ( (size_t) result != data_size+sizeof(uint32_t)+1 ) {
-        return false;
-    }
-    return true;
+    bool result = sendData( client, (uint8_t*) buf
+                          , data_size + sizeof(uint32_t) + 1 );
+    free( buf );
+    return result;
 }
 
 static bool sendData( Dfterm3Client* client
@@ -471,6 +471,7 @@ static bool sendData( Dfterm3Client* client
     if ( client->send_buffer.size() == 0 ) {
         return true;
     }
+
     int result = client->client_socket->Send( (const uint8_t*)
                                               client->send_buffer.data()
                                             , client->send_buffer.size() );
