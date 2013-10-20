@@ -38,8 +38,13 @@
 
 extern "C" {
     extern const char* __progname_full;
+#ifndef _WIN32
     extern int SDL_PushEvent( SDL::Event* event );
+#endif
 };
+
+static int (*mySDL_PushEvent)( SDL::Event* event ) = 0;
+static void initialize_SDL_PushEvent( void );
 
 using namespace DFHack;
 using namespace std;
@@ -160,6 +165,8 @@ DFhackCExport command_result plugin_init ( color_ostream &out
                                          , std::vector<PluginCommand>
                                                &commands )
 {
+    initialize_SDL_PushEvent();
+
     commands.push_back(PluginCommand(
        "start-dfterm3"
      , "Allow Dfterm3 to find this Dwarf Fortress process."
@@ -818,7 +825,7 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
                     event.key.which = 0;
                     event.key.ksym.mod = actual_mods;
                     event.key.ksym.sym = key;
-                    SDL_PushEvent( &event );
+                    mySDL_PushEvent( &event );
                 }
 
                 if ( key_direction == Up || key_direction == UpAndDown ) {
@@ -828,7 +835,7 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
                     event.key.which = 0;
                     event.key.ksym.mod = actual_mods;
                     event.key.ksym.sym = key;
-                    SDL_PushEvent( &event );
+                    mySDL_PushEvent( &event );
                 }
             } else if ( code_point ) {
 
@@ -839,7 +846,7 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
                     event.key.which = 0;
                     event.key.ksym.mod = actual_mods;
                     event.key.ksym.unicode = (uint16_t) code_point;
-                    SDL_PushEvent( &event );
+                    mySDL_PushEvent( &event );
                 }
 
                 if ( key_direction == Up || key_direction == UpAndDown ) {
@@ -849,7 +856,7 @@ static void handleInput( Dfterm3Client* client, color_ostream &out )
                     event.key.which = 0;
                     event.key.ksym.mod = actual_mods;
                     event.key.ksym.unicode = (uint16_t) code_point;
-                    SDL_PushEvent( &event );
+                    mySDL_PushEvent( &event );
                 }
             }
         }
@@ -898,3 +905,15 @@ static bool sendScreenData( color_ostream &out, Dfterm3Client* client )
     free(sendings);
     return result;
 }
+
+static void initialize_SDL_PushEvent( void )
+{
+#ifndef _WIN32
+    mySDL_PushEvent = SDL_PushEvent;
+#else
+    mySDL_PushEvent = (int (*)( SDL::Event* ))
+                      GetProcAddress( GetModuleHandle("SDLreal.dll")
+                                    , "SDL_PushEvent" );
+#endif
+}
+
