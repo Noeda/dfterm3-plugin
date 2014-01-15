@@ -185,6 +185,11 @@ DFhackCExport command_result plugin_init ( color_ostream &out
      , stopDfterm3
      , "This is the opposite of start-dfterm3.") );
 
+    if ( getenv( "START_DFTERM3" ) ) {
+        std::vector<std::string> empty;
+        startDfterm3( out, empty );
+    }
+
     return CR_OK;
 }
 
@@ -197,10 +202,6 @@ DFhackCExport command_result plugin_shutdown ( color_ostream &out )
 DFhackCExport command_result plugin_onupdate( color_ostream &out )
 {
     std::vector<std::string> empty;
-    if ( getenv( "START_DFTERM3" ) && !dfterm3_running ) {
-        startDfterm3( out, empty );
-    }
-
     if ( !dfterm3_running ) {
         return CR_OK;
     }
