@@ -171,6 +171,7 @@ DFhackCExport command_result plugin_init ( color_ostream &out
        "start-dfterm3"
      , "Allow Dfterm3 to find this Dwarf Fortress process."
      , startDfterm3
+     , false
      , "Dfterm3 can find Dwarf Fortress processes by looking for open ports "
        "that Dfhack opens for it through this plugin. You need to enable the "
        "port first, however.\n\n"
@@ -183,6 +184,7 @@ DFhackCExport command_result plugin_init ( color_ostream &out
      , "Stops any connections to Dfterm3 and disallows Dfterm3 from finding "
        "this Dwarf Fortress process."
      , stopDfterm3
+     , false
      , "This is the opposite of start-dfterm3.") );
 
     if ( getenv( "START_DFTERM3" ) ) {
