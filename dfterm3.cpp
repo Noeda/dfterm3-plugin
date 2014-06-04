@@ -54,6 +54,9 @@ using namespace df::enums;
 using df::global::gps;
 using df::global::enabler;
 
+DFHACK_PLUGIN("dfterm3");
+DFHACK_PLUGIN_IS_ENABLED(is_enabled);
+
 struct Dfterm3Client
 {
     CActiveSocket* client_socket;
@@ -159,7 +162,6 @@ static set<Dfterm3Client*> clients;
 static string magic_cookie_file = ".dfterm3-cookie";
 static string magic_cookie_contents;
 
-DFHACK_PLUGIN("dfterm3");
 
 DFhackCExport command_result plugin_init ( color_ostream &out
                                          , std::vector<PluginCommand>
@@ -284,6 +286,7 @@ static command_result startDfterm3 ( color_ostream &out
                 out << "Dfterm3 service started on port " <<
                        try_port << "." << endl;
                 dfterm3_running = true;
+                is_enabled = true;
                 return CR_OK;
             } else {
                 out << "Failed to create a magic cookie file in "
@@ -315,6 +318,7 @@ static command_result stopDfterm3 ( color_ostream &out
 // common code to make sure the service stops.
 static void haltDfterm3()
 {
+    is_enabled = false;
     listener_socket.Close();
     cleanlyClearClients();
     unlinkMagicCookieFile();

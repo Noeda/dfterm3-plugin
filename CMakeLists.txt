@@ -17,4 +17,4 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/proto)
 
 DFHACK_PLUGIN(dfterm3 dfterm3.cpp dfterm3_strerror.cpp
                       proto/dfterm3.pb.cc
-                      LINK_LIBRARIES clsocket)
+                      LINK_LIBRARIES clsocket protobuf-lite)
